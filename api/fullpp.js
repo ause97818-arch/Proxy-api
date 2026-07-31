@@ -1,3 +1,4 @@
+// api/fullpp.js
 import axios from "axios";
 
 const TARGET_BASE_URL = "http://45.13.226.96:9024/api/fullpp";
@@ -10,7 +11,6 @@ function setCorsHeaders(res) {
 }
 
 export default async function handler(req, res) {
-  // Always attach CORS headers first, before anything else can fail
   setCorsHeaders(res);
 
   if (req.method === "OPTIONS") {
@@ -40,12 +40,22 @@ export default async function handler(req, res) {
     try {
       const remoteResponse = await axios.get(targetUrl, {
         timeout: REQUEST_TIMEOUT_MS,
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: "application/json, text/plain, */*",
+        },
+        validateStatus: () => true,
       });
 
-      return res.status(200).json(remoteResponse.data);
+      return res.status(200).json({
+        success: true,
+        upstreamStatus: remoteResponse.status,
+        data: remoteResponse.data,
+      });
     } catch (fetchError) {
-      // Handles ECONNREFUSED, ECONNABORTED (timeout), DNS errors,
-      // and non-2xx responses from the upstream server
+      // Only hit for actual network-level failures now
+      // (validateStatus prevents non-2xx from throwing)
       return res.status(502).json({
         success: false,
         error: "Upstream server unreachable or timed out",
@@ -53,7 +63,6 @@ export default async function handler(req, res) {
       });
     }
   } catch (error) {
-    // Final safety net — catches any unexpected synchronous error
     setCorsHeaders(res);
     return res.status(500).json({
       success: false,
