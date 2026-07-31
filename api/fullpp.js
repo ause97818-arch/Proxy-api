@@ -1,33 +1,64 @@
-// api/fullpp.js
-const {
-  setCorsHeaders,
-  handlePreflight,
-  resolveAlias,
-  fetchWithRetry,
-  sendUpstreamError
-} = require('../lib/apiHandler');
+import axios from "axios";
 
-const TARGET_BASE_URL = 'http://45.13.226.96:9024/api/fullpp';
+const TARGET_BASE_URL = "http://45.13.226.96:9024/api/fullpp";
+const REQUEST_TIMEOUT_MS = 8000;
 
-module.exports = async (req, res) => {
-  if (handlePreflight(req, res)) return;
+function setCorsHeaders(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+}
+
+export default async function handler(req, res) {
+  // Always attach CORS headers first, before anything else can fail
   setCorsHeaders(res);
 
-  try {
-    const img = resolveAlias(req.query, 'img');
-    const number = resolveAlias(req.query, 'num', 'number');
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
 
-    if (!img || !number) {
+  try {
+    const { img, number, num } = req.query;
+    const phoneNumber = number || num;
+
+    if (!img) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required parameter(s). Both "img" and "num" (or "number") are required.'
+        error: "Missing required parameter: img",
       });
     }
 
-    const upstreamResponse = await fetchWithRetry(TARGET_BASE_URL, { img, number });
-    return res.status(200).json(upstreamResponse.data);
+    if (!phoneNumber) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required parameter: number (or num)",
+      });
+    }
 
+    const targetUrl = `${TARGET_BASE_URL}?img=${encodeURIComponent(img)}&number=${encodeURIComponent(phoneNumber)}`;
+
+    try {
+      const remoteResponse = await axios.get(targetUrl, {
+        timeout: REQUEST_TIMEOUT_MS,
+      });
+
+      return res.status(200).json(remoteResponse.data);
+    } catch (fetchError) {
+      // Handles ECONNREFUSED, ECONNABORTED (timeout), DNS errors,
+      // and non-2xx responses from the upstream server
+      return res.status(502).json({
+        success: false,
+        error: "Upstream server unreachable or timed out",
+        details: fetchError.message,
+      });
+    }
   } catch (error) {
-    return sendUpstreamError(res, error);
+    // Final safety net — catches any unexpected synchronous error
+    setCorsHeaders(res);
+    return res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      details: error.message,
+    });
   }
-};
+}
