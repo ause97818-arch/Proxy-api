@@ -1,3 +1,4 @@
+// api/getpp.js
 import axios from "axios";
 
 const TARGET_BASE_URL = "http://45.13.226.96:9024/api/getpp";
@@ -32,9 +33,19 @@ export default async function handler(req, res) {
     try {
       const remoteResponse = await axios.get(targetUrl, {
         timeout: REQUEST_TIMEOUT_MS,
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: "application/json, text/plain, */*",
+        },
+        validateStatus: () => true,
       });
 
-      return res.status(200).json(remoteResponse.data);
+      return res.status(200).json({
+        success: true,
+        upstreamStatus: remoteResponse.status,
+        data: remoteResponse.data,
+      });
     } catch (fetchError) {
       return res.status(502).json({
         success: false,
